@@ -37,8 +37,8 @@ class VisdomWriter(object):
                 win=self.win)
 
 
-def log_samples(file_path, samples, EN, is_sample=True):
-    if is_sample:
+def log_samples(file_path, samples, EN, is_output=True):
+    if is_output:
         _, argmax = torch.max(samples, 2)
         samples = argmax.cpu().data
     samples = samples.t()

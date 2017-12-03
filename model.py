@@ -37,11 +37,9 @@ class Attention(nn.Module):
 
     def forward(self, hidden, encoder_outputs):
         timestep = encoder_outputs.size(0)
-        batch_size = encoder_outputs.size(1)
-        attn_energies = Variable(torch.zeros(batch_size, timestep)).cuda()
-        H = hidden.repeat(timestep, 1, 1).transpose(0, 1)
+        h = hidden.repeat(timestep, 1, 1).transpose(0, 1)
         encoder_outputs = encoder_outputs.transpose(0, 1)  # [B*T*H]
-        attn_energies = self.score(H, encoder_outputs)
+        attn_energies = self.score(h, encoder_outputs)
         return F.softmax(attn_energies).unsqueeze(1)
 
     def score(self, hidden, encoder_outputs):

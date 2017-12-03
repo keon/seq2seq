@@ -20,8 +20,8 @@ def load_dataset(batch_size):
     EN = Field(tokenize=tokenize_en, include_lengths=True,
                init_token='<sos>', eos_token='<eos>')
     train, val, test = IWSLT.splits(exts=('.de', '.en'), fields=(DE, EN))
-    DE.build_vocab(train.src, min_freq=5)
-    EN.build_vocab(train.trg, max_size=30000)
+    DE.build_vocab(train.src, min_freq=3)
+    EN.build_vocab(train.trg, min_freq=3)
     train_iter, val_iter, test_iter = BucketIterator.splits(
             (train, val, test), batch_size=batch_size, sort_within_batch=True,
             sort_key=lambda e: len(e.src), repeat=False)

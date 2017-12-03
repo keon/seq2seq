@@ -3,6 +3,7 @@ import math
 import argparse
 import torch
 from torch import optim
+from torch.autograd import Variable
 from torch.nn.utils import clip_grad_norm
 from torch.nn import functional as F
 from model import Encoder, Decoder, Seq2Seq
@@ -14,7 +15,7 @@ def parse_arguments():
     p = argparse.ArgumentParser(description='Hyperparams')
     p.add_argument('-epochs', type=int, default=100,
                    help='number of epochs for train')
-    p.add_argument('-batch_size', type=int, default=64,
+    p.add_argument('-batch_size', type=int, default=32,
                    help='number of epochs for train')
     p.add_argument('-lr', type=float, default=0.0001,
                    help='initial learning rate')
@@ -30,7 +31,8 @@ def evaluate(model, val_iter, vocab_size, DE, EN):
     for b, batch in enumerate(val_iter):
         src, len_src = batch.src
         trg, len_trg = batch.trg
-        src, trg = src.cuda(), trg.cuda()
+        src = Variable(src.data.cuda(), volatile=True)
+        trg = Variable(trg.data.cuda(), volatile=True)
         output = model(src, trg)
         loss = F.cross_entropy(output.view(-1, vocab_size),
                                trg.contiguous().view(-1), ignore_index=pad)
@@ -40,7 +42,7 @@ def evaluate(model, val_iter, vocab_size, DE, EN):
 
 def train(e, model, optimizer, train_iter, vocab_size, grad_clip, vis, DE, EN):
     model.train()
-    losses = 0
+    total_loss = 0
     pad = EN.vocab.stoi['<pad>']
     for b, batch in enumerate(train_iter):
         src, len_src = batch.src
@@ -53,14 +55,14 @@ def train(e, model, optimizer, train_iter, vocab_size, grad_clip, vis, DE, EN):
         loss.backward()
         clip_grad_norm(model.parameters(), grad_clip)
         optimizer.step()
-        loss = loss.data[0]
-        losses += loss
+        total_loss += loss.data[0]
 
-        if b % 100 == 0 and b != 0:
-            losses = losses / 100
-            print("[%d][loss:%5.2f][pp:%5.2f]" % (b, losses, math.exp(losses)))
-            vis.update(loss)
-            losses = 0
+        if b % 500 == 0 and b != 0:
+            total_loss = total_loss / 500
+            print("[%d][loss:%5.2f][pp:%5.2f]" %
+                  (b, total_loss, math.exp(total_loss)))
+            vis.update(total_loss)
+            total_loss = 0
     if not os.path.isdir(".samples"):
         os.makedirs(".samples")
     log_samples('./.samples/de-%d.txt' % e, src.data, DE, is_sample=False)
@@ -69,8 +71,8 @@ def train(e, model, optimizer, train_iter, vocab_size, grad_clip, vis, DE, EN):
 
 def main():
     args = parse_arguments()
-    hidden_size = 1024
-    embed_size = 512
+    hidden_size = 512
+    embed_size = 256
     assert torch.cuda.is_available()
 
     # visdom for plotting
@@ -107,7 +109,7 @@ def main():
                 os.makedirs(".save")
             torch.save(seq2seq.state_dict(), './.save/seq2seq_%d.pt' % (e))
             best_val_loss = val_loss
-
+    test_loss = evaluate(seq2seq, test_iter, en_size, DE, EN)
 
 if __name__ == "__main__":
     try:
