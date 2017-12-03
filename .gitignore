@@ -104,3 +104,4 @@ ENV/
 .data
 .save
 .samples
+.tmp
