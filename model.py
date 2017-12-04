@@ -103,7 +103,7 @@ class Seq2Seq(nn.Module):
         for t in range(1, len(trg)):
             output, hidden, attn_weights = self.decoder(
                     output, hidden, encoder_output)
-            outputs[t] = output.data
+            outputs[t] = output
             is_teacher = random.random() < teacher_forcing_ratio
             top1 = output.data.topk(1)[1].squeeze()
             output = Variable(trg.data[t] if is_teacher else top1).cuda()
