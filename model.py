@@ -61,7 +61,7 @@ class Decoder(nn.Module):
         self.n_layers = n_layers
 
         self.embed = nn.Embedding(output_size, embed_size)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout, inplace=True)
         self.attention = Attention(hidden_size)
         self.gru = nn.GRU(hidden_size + embed_size, hidden_size,
                           n_layers, dropout=dropout)
@@ -69,7 +69,7 @@ class Decoder(nn.Module):
 
     def forward(self, input, last_hidden, encoder_outputs):
         # Get the embedding of the current input word (last output word)
-        embedded = self.embed(input).view(1, input.data.size(0), -1)  # (1,B,N)
+        embedded = self.embed(input).unsqueeze(0)  # (1,B,N)
         embedded = self.dropout(embedded)
         # Calculate attention weights and apply to encoder outputs
         attn_weights = self.attention(last_hidden[-1], encoder_outputs)
@@ -105,6 +105,6 @@ class Seq2Seq(nn.Module):
                     output, hidden, encoder_output)
             outputs[t] = output
             is_teacher = random.random() < teacher_forcing_ratio
-            top1 = output.data.topk(1)[1].squeeze()
+            top1 = output.data.max(1)[1]
             output = Variable(trg.data[t] if is_teacher else top1).cuda()
         return outputs
