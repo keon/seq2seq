@@ -14,7 +14,7 @@ def parse_arguments():
     p = argparse.ArgumentParser(description='Hyperparams')
     p.add_argument('-epochs', type=int, default=100,
                    help='number of epochs for train')
-    p.add_argument('-batch_size', type=int, default=10,
+    p.add_argument('-batch_size', type=int, default=32,
                    help='number of epochs for train')
     p.add_argument('-lr', type=float, default=0.0001,
                    help='initial learning rate')
@@ -74,7 +74,10 @@ def main():
     print("[!] preparing dataset...")
     train_iter, val_iter, test_iter, DE, EN = load_dataset(args.batch_size)
     de_size, en_size = len(DE.vocab), len(EN.vocab)
-    print("de_vocab_size: %d en_vocab_size: %d" % (de_size, en_size))
+    print("[TRAIN]:%d (dataset:%d)\t[TEST]:%d (dataset:%d)"
+          % (len(train_iter), len(train_iter.dataset),
+             len(test_iter), len(test_iter.dataset)))
+    print("[DE_vocab]:%d [en_vocab]:%d" % (de_size, en_size))
 
     print("[!] Instantiating models...")
     encoder = Encoder(de_size, embed_size, hidden_size,
