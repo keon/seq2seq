@@ -14,7 +14,7 @@ def parse_arguments():
     p = argparse.ArgumentParser(description='Hyperparams')
     p.add_argument('-epochs', type=int, default=100,
                    help='number of epochs for train')
-    p.add_argument('-batch_size', type=int, default=32,
+    p.add_argument('-batch_size', type=int, default=5,
                    help='number of epochs for train')
     p.add_argument('-lr', type=float, default=0.0001,
                    help='initial learning rate')
@@ -33,8 +33,9 @@ def evaluate(model, val_iter, vocab_size, DE, EN):
         src = Variable(src.data.cuda(), volatile=True)
         trg = Variable(trg.data.cuda(), volatile=True)
         output = model(src, trg)
-        loss = F.cross_entropy(output.view(-1, vocab_size),
-                               trg.contiguous().view(-1), ignore_index=pad)
+        loss = F.cross_entropy(output[1:].view(-1, vocab_size),
+                               trg[1:].contiguous().view(-1),
+                               ignore_index=pad)
         total_loss += loss.data[0]
     return total_loss / len(val_iter)
 
@@ -49,15 +50,16 @@ def train(e, model, optimizer, train_iter, vocab_size, grad_clip, DE, EN):
         src, trg = src.cuda(), trg.cuda()
         optimizer.zero_grad()
         output = model(src, trg)
-        loss = F.cross_entropy(output.view(-1, vocab_size),
-                               trg.contiguous().view(-1), ignore_index=pad)
+        loss = F.cross_entropy(output[1:].view(-1, vocab_size),
+                               trg[1:].contiguous().view(-1),
+                               ignore_index=pad)
         loss.backward()
         clip_grad_norm(model.parameters(), grad_clip)
         optimizer.step()
         total_loss += loss.data[0]
 
-        if b % 500 == 0 and b != 0:
-            total_loss = total_loss / 500
+        if b % 100 == 0 and b != 0:
+            total_loss = total_loss / 100
             print("[%d][loss:%5.2f][pp:%5.2f]" %
                   (b, total_loss, math.exp(total_loss)))
             total_loss = 0

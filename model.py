@@ -40,7 +40,7 @@ class Attention(nn.Module):
         h = hidden.repeat(timestep, 1, 1).transpose(0, 1)
         encoder_outputs = encoder_outputs.transpose(0, 1)  # [B*T*H]
         attn_energies = self.score(h, encoder_outputs)
-        return F.softmax(attn_energies).unsqueeze(1)
+        return F.softmax(attn_energies, dim=1).unsqueeze(1)
 
     def score(self, hidden, encoder_outputs):
         # [B*T*2H]->[B*T*H]
@@ -80,7 +80,8 @@ class Decoder(nn.Module):
         output, hidden = self.gru(rnn_input, last_hidden)
         output = output.squeeze(0)  # (1,B,N) -> (B,N)
         context = context.squeeze(0)
-        output = F.log_softmax(self.out(torch.cat([output, context], 1)))
+        output = self.out(torch.cat([output, context], 1))
+        output = F.log_softmax(output, dim=1)
         return output, hidden, attn_weights
 
 
@@ -98,9 +99,8 @@ class Seq2Seq(nn.Module):
 
         encoder_output, hidden = self.encoder(src)
         hidden = hidden[:self.decoder.n_layers]
-        output = Variable(trg.data[0, :]).cuda()
-        outputs[0] = to_onehot(output, vocab_size)
-        for t in range(1, len(trg)):
+        output = Variable(trg.data[0, :])  # sos
+        for t in range(1, max_len):
             output, hidden, attn_weights = self.decoder(
                     output, hidden, encoder_output)
             outputs[t] = output
@@ -108,10 +108,3 @@ class Seq2Seq(nn.Module):
             top1 = output.data.topk(1)[1].squeeze()
             output = Variable(trg.data[t] if is_teacher else top1).cuda()
         return outputs
-
-
-def to_onehot(orig, vocab_size):
-    batch_size = orig.size(0)
-    onehot = torch.FloatTensor(batch_size, vocab_size).zero_()
-    onehot.scatter_(1, orig.data.cpu().unsqueeze(1), 1)
-    return onehot
