@@ -40,11 +40,11 @@ class Attention(nn.Module):
         h = hidden.repeat(timestep, 1, 1).transpose(0, 1)
         encoder_outputs = encoder_outputs.transpose(0, 1)  # [B*T*H]
         attn_energies = self.score(h, encoder_outputs)
-        return F.softmax(attn_energies, dim=1).unsqueeze(1)
+        return F.relu(attn_energies, dim=1).unsqueeze(1)
 
     def score(self, hidden, encoder_outputs):
         # [B*T*2H]->[B*T*H]
-        energy = self.attn(torch.cat([hidden, encoder_outputs], 2))
+        energy = F.softmax(self.attn(torch.cat([hidden, encoder_outputs], 2)))
         energy = energy.transpose(1, 2)  # [B*H*T]
         v = self.v.repeat(encoder_outputs.size(0), 1).unsqueeze(1)  # [B*1*H]
         energy = torch.bmm(v, energy)  # [B*1*T]
