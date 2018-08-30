@@ -91,7 +91,7 @@ class Seq2Seq(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-    def forward(self, src, trg, teacher_forcing_ratio=0.5, is_eval=False):
+    def forward(self, src, trg, teacher_forcing_ratio=0.5):
         batch_size = src.size(1)
         max_len = trg.size(0)
         vocab_size = self.decoder.output_size
@@ -106,5 +106,5 @@ class Seq2Seq(nn.Module):
             outputs[t] = output
             is_teacher = random.random() < teacher_forcing_ratio
             top1 = output.data.max(1)[1]
-            output = Variable(trg.data[t] if is_teacher and not is_eval else top1).cuda()
+            output = Variable(trg.data[t] if is_teacher else top1).cuda()
         return outputs
