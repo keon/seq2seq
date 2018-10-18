@@ -19,7 +19,7 @@ def parse_arguments():
     p.add_argument('-lr', type=float, default=0.0001,
                    help='initial learning rate')
     p.add_argument('-grad_clip', type=float, default=10.0,
-                   help='initial learning rate')
+                   help='in case of gradient explosion')
     return p.parse_args()
 
 
