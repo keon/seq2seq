@@ -29,8 +29,8 @@ This implementation relies on [torchtext](https://github.com/pytorch/text) to mi
 
 download tokenizers by doing so:
 ```
-sudo python3 -m spacy download de
-sudo python3 -m spacy download en
+python -m spacy download de
+python -m spacy download en
 ```
 
 
