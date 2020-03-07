@@ -4,7 +4,7 @@ import argparse
 import torch
 from torch import optim
 from torch.autograd import Variable
-from torch.nn.utils import clip_grad_norm
+from torch.nn.utils import clip_grad_norm_
 from torch.nn import functional as F
 from model import Encoder, Decoder, Seq2Seq
 from utils import load_dataset
@@ -54,7 +54,7 @@ def train(e, model, optimizer, train_iter, vocab_size, grad_clip, DE, EN):
                                trg[1:].contiguous().view(-1),
                                ignore_index=pad)
         loss.backward()
-        clip_grad_norm(model.parameters(), grad_clip)
+        clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
         total_loss += loss.data[0]
 
