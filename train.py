@@ -36,7 +36,7 @@ def evaluate(model, val_iter, vocab_size, DE, EN):
         loss = F.nll_loss(output[1:].view(-1, vocab_size),
                                trg[1:].contiguous().view(-1),
                                ignore_index=pad)
-        total_loss += loss.data[0]
+        total_loss += loss.data.item()
     return total_loss / len(val_iter)
 
 
@@ -56,7 +56,7 @@ def train(e, model, optimizer, train_iter, vocab_size, grad_clip, DE, EN):
         loss.backward()
         clip_grad_norm(model.parameters(), grad_clip)
         optimizer.step()
-        total_loss += loss.data[0]
+        total_loss += loss.data.item()
 
         if b % 100 == 0 and b != 0:
             total_loss = total_loss / 100
