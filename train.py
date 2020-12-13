@@ -11,12 +11,18 @@ from utils import load_dataset, PAD
 
 def parse_arguments():
     p = argparse.ArgumentParser(description='Hyperparams')
-    p.add_argument('-epochs', type=int, default=100)
-    p.add_argument('-batch_size', type=int, default=32)
-    p.add_argument('-lr', type=float, default=1e-4)
-    p.add_argument('-grad_clip', type=float, default=10.0)
-    p.add_argument('-hidden_size', type=int, default=512)
-    p.add_argument('-embed_size', type=int, default=256)
+    p.add_argument('-epochs', type=int, default=100,
+                   help='number of epochs for train')
+    p.add_argument('-batch_size', type=int, default=32,
+                   help='batch size for training')
+    p.add_argument('-lr', type=float, default=1e-4,
+                   help='initial learning rate')
+    p.add_argument('-grad_clip', type=float, default=10.0,
+                   help='gradient clip norm')
+    p.add_argument('-hidden_size', type=int, default=512,
+                   help='RNN hidden size')
+    p.add_argument('-embed_size', type=int, default=256,
+                   help='token embedding size')
     p.add_argument('-patience', type=int, default=5,
                    help='early-stop after N epochs without val-loss improvement')
     return p.parse_args()
