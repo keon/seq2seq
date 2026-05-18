@@ -100,7 +100,7 @@ def main():
         if best_val_loss is None or val_loss < best_val_loss:
             print("[!] saving model...")
             os.makedirs(".save", exist_ok=True)
-            torch.save(seq2seq.state_dict(), f'./.save/seq2seq_{e}.pt')
+            torch.save(seq2seq.state_dict(), './.save/best.pt')
             best_val_loss, no_improve = val_loss, 0
         else:
             no_improve += 1
