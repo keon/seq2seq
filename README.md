@@ -7,7 +7,7 @@ This implementation focuses on the following features:
 - Minimal code for readability
 - Full utilization of batches and GPU.
 
-This implementation relies on [torchtext](https://github.com/pytorch/text) to minimize dataset management and preprocessing parts.
+Dataset (Multi30k DE→EN) is loaded via HuggingFace [`datasets`](https://github.com/huggingface/datasets); tokenization uses [spaCy](https://spacy.io/).
 
 ## Model description
 
@@ -19,20 +19,36 @@ This implementation relies on [torchtext](https://github.com/pytorch/text) to mi
 
 ## Requirements
 
-* GPU & CUDA
-* Python3
-* PyTorch
-* torchtext
-* Spacy
-* numpy
-* Visdom (optional)
+* Python 3.9+
+* PyTorch >= 2.0 (CPU, CUDA, or Apple MPS)
+* `datasets` (HuggingFace, replaces torchtext)
+* Spacy >= 3.7
 
-download tokenizers by doing so:
 ```
-python -m spacy download de
-python -m spacy download en
+pip install -r requirements.txt
+python -m spacy download de_core_news_sm
+python -m spacy download en_core_web_sm
 ```
 
+## Train
+
+```
+python train.py -epochs 30 -batch_size 32 -lr 3e-4
+```
+
+Device is auto-detected (CUDA → MPS → CPU). Smaller `-hidden_size` / `-embed_size` flags are useful for CPU smoke runs.
+
+Sanity check (CPU, 500 batches, hidden=128/embed=64):
+
+| step | train loss | perplexity |
+|------|-----------:|-----------:|
+| init |       9.20 |      9930 |
+|   50 |       6.95 |      1045 |
+|  100 |       5.46 |       236 |
+|  250 |       5.16 |       175 |
+|  500 |       4.89 |       133 |
+
+Final val loss: **4.97** (random-init prior is `log(|V|) ≈ 9.19`).
 
 ## References
 

@@ -1,27 +1,52 @@
-import re
+import torch
 import spacy
-from torchtext.data import Field, BucketIterator
-from torchtext.datasets import Multi30k
+from collections import Counter
+from datasets import load_dataset as _hf_load_dataset
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import DataLoader
+
+UNK, PAD, SOS, EOS = 0, 1, 2, 3
+SPECIALS = ['<unk>', '<pad>', '<sos>', '<eos>']
 
 
-def load_dataset(batch_size):
-    spacy_de = spacy.load('de')
-    spacy_en = spacy.load('en')
-    url = re.compile('(<url>.*</url>)')
+class Vocab:
+    def __init__(self, counter, min_freq=1, max_size=None):
+        self.itos = list(SPECIALS) + [
+            w for w, c in counter.most_common(max_size)
+            if c >= min_freq and w not in SPECIALS
+        ]
+        self.stoi = {w: i for i, w in enumerate(self.itos)}
 
-    def tokenize_de(text):
-        return [tok.text for tok in spacy_de.tokenizer(url.sub('@URL@', text))]
+    def __len__(self):
+        return len(self.itos)
 
-    def tokenize_en(text):
-        return [tok.text for tok in spacy_en.tokenizer(url.sub('@URL@', text))]
+    def encode(self, tokens):
+        return [SOS] + [self.stoi.get(t, UNK) for t in tokens] + [EOS]
 
-    DE = Field(tokenize=tokenize_de, include_lengths=True,
-               init_token='<sos>', eos_token='<eos>')
-    EN = Field(tokenize=tokenize_en, include_lengths=True,
-               init_token='<sos>', eos_token='<eos>')
-    train, val, test = Multi30k.splits(exts=('.de', '.en'), fields=(DE, EN))
-    DE.build_vocab(train.src, min_freq=2)
-    EN.build_vocab(train.trg, max_size=10000)
-    train_iter, val_iter, test_iter = BucketIterator.splits(
-            (train, val, test), batch_size=batch_size, repeat=False)
-    return train_iter, val_iter, test_iter, DE, EN
+
+def load_dataset(batch_size, dataset_name='bentrevett/multi30k'):
+    de_nlp = spacy.load('de_core_news_sm')
+    en_nlp = spacy.load('en_core_web_sm')
+    tok_de = lambda t: [w.text.lower() for w in de_nlp.tokenizer(t)]
+    tok_en = lambda t: [w.text.lower() for w in en_nlp.tokenizer(t)]
+
+    raw = _hf_load_dataset(dataset_name)
+    train, val, test = raw['train'], raw['validation'], raw['test']
+
+    de_c, en_c = Counter(), Counter()
+    for ex in train:
+        de_c.update(tok_de(ex['de']))
+        en_c.update(tok_en(ex['en']))
+    DE = Vocab(de_c, min_freq=2)
+    EN = Vocab(en_c, max_size=10000)
+
+    def collate(batch):
+        src = [torch.tensor(DE.encode(tok_de(b['de']))) for b in batch]
+        trg = [torch.tensor(EN.encode(tok_en(b['en']))) for b in batch]
+        return (pad_sequence(src, padding_value=PAD),
+                pad_sequence(trg, padding_value=PAD))
+
+    def loader(split, shuffle):
+        return DataLoader(split, batch_size=batch_size,
+                          collate_fn=collate, shuffle=shuffle)
+    return loader(train, True), loader(val, False), loader(test, False), DE, EN
