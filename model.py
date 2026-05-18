@@ -1,18 +1,15 @@
 import math
-import torch
 import random
+import torch
 from torch import nn
-from torch.autograd import Variable
 import torch.nn.functional as F
 
 
 class Encoder(nn.Module):
     def __init__(self, input_size, embed_size, hidden_size,
                  n_layers=1, dropout=0.5):
-        super(Encoder, self).__init__()
-        self.input_size = input_size
+        super().__init__()
         self.hidden_size = hidden_size
-        self.embed_size = embed_size
         self.embed = nn.Embedding(input_size, embed_size)
         self.gru = nn.GRU(embed_size, hidden_size, n_layers,
                           dropout=dropout, bidirectional=True)
@@ -28,9 +25,8 @@ class Encoder(nn.Module):
 
 class Attention(nn.Module):
     def __init__(self, hidden_size):
-        super(Attention, self).__init__()
-        self.hidden_size = hidden_size
-        self.attn = nn.Linear(self.hidden_size * 2, hidden_size)
+        super().__init__()
+        self.attn = nn.Linear(hidden_size * 2, hidden_size)
         self.v = nn.Parameter(torch.rand(hidden_size))
         stdv = 1. / math.sqrt(self.v.size(0))
         self.v.data.uniform_(-stdv, stdv)
@@ -43,8 +39,8 @@ class Attention(nn.Module):
         return F.softmax(attn_energies, dim=1).unsqueeze(1)
 
     def score(self, hidden, encoder_outputs):
-        # [B*T*2H]->[B*T*H]
-        energy = F.relu(self.attn(torch.cat([hidden, encoder_outputs], 2)))
+        # Bahdanau additive attention: v^T tanh(W [h; s])
+        energy = torch.tanh(self.attn(torch.cat([hidden, encoder_outputs], 2)))
         energy = energy.transpose(1, 2)  # [B*H*T]
         v = self.v.repeat(encoder_outputs.size(0), 1).unsqueeze(1)  # [B*1*H]
         energy = torch.bmm(v, energy)  # [B*1*T]
@@ -54,12 +50,9 @@ class Attention(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, embed_size, hidden_size, output_size,
                  n_layers=1, dropout=0.2):
-        super(Decoder, self).__init__()
-        self.embed_size = embed_size
-        self.hidden_size = hidden_size
-        self.output_size = output_size
+        super().__init__()
         self.n_layers = n_layers
-
+        self.output_size = output_size
         self.embed = nn.Embedding(output_size, embed_size)
         self.dropout = nn.Dropout(dropout, inplace=True)
         self.attention = Attention(hidden_size)
@@ -68,43 +61,41 @@ class Decoder(nn.Module):
         self.out = nn.Linear(hidden_size * 2, output_size)
 
     def forward(self, input, last_hidden, encoder_outputs):
-        # Get the embedding of the current input word (last output word)
-        embedded = self.embed(input).unsqueeze(0)  # (1,B,N)
-        embedded = self.dropout(embedded)
-        # Calculate attention weights and apply to encoder outputs
+        embedded = self.dropout(self.embed(input).unsqueeze(0))  # (1,B,N)
         attn_weights = self.attention(last_hidden[-1], encoder_outputs)
         context = attn_weights.bmm(encoder_outputs.transpose(0, 1))  # (B,1,N)
         context = context.transpose(0, 1)  # (1,B,N)
-        # Combine embedded input word and attended context, run through RNN
         rnn_input = torch.cat([embedded, context], 2)
         output, hidden = self.gru(rnn_input, last_hidden)
-        output = output.squeeze(0)  # (1,B,N) -> (B,N)
+        output = output.squeeze(0)
         context = context.squeeze(0)
-        output = self.out(torch.cat([output, context], 1))
-        output = F.log_softmax(output, dim=1)
+        output = F.log_softmax(self.out(torch.cat([output, context], 1)), dim=1)
         return output, hidden, attn_weights
 
 
 class Seq2Seq(nn.Module):
     def __init__(self, encoder, decoder):
-        super(Seq2Seq, self).__init__()
+        super().__init__()
         self.encoder = encoder
         self.decoder = decoder
 
-    def forward(self, src, trg, teacher_forcing_ratio=0.5):
+    def forward(self, src, trg=None, max_len=50, sos=2,
+                teacher_forcing_ratio=0.5):
+        # trg=None enables greedy inference; otherwise teacher-forced training.
         batch_size = src.size(1)
-        max_len = trg.size(0)
+        if trg is not None:
+            max_len = trg.size(0)
         vocab_size = self.decoder.output_size
-        outputs = Variable(torch.zeros(max_len, batch_size, vocab_size)).cuda()
+        outputs = torch.zeros(max_len, batch_size, vocab_size,
+                              device=src.device)
 
         encoder_output, hidden = self.encoder(src)
         hidden = hidden[:self.decoder.n_layers]
-        output = Variable(trg.data[0, :])  # sos
+        output = trg[0] if trg is not None else torch.full(
+            (batch_size,), sos, dtype=torch.long, device=src.device)
         for t in range(1, max_len):
-            output, hidden, attn_weights = self.decoder(
-                    output, hidden, encoder_output)
+            output, hidden, _ = self.decoder(output, hidden, encoder_output)
             outputs[t] = output
-            is_teacher = random.random() < teacher_forcing_ratio
-            top1 = output.data.max(1)[1]
-            output = Variable(trg.data[t] if is_teacher else top1).cuda()
+            is_teacher = trg is not None and random.random() < teacher_forcing_ratio
+            output = trg[t] if is_teacher else output.argmax(1)
         return outputs

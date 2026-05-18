@@ -3,108 +3,96 @@ import math
 import argparse
 import torch
 from torch import optim
-from torch.autograd import Variable
 from torch.nn.utils import clip_grad_norm_
 from torch.nn import functional as F
 from model import Encoder, Decoder, Seq2Seq
-from utils import load_dataset
+from utils import load_dataset, PAD
 
 
 def parse_arguments():
     p = argparse.ArgumentParser(description='Hyperparams')
-    p.add_argument('-epochs', type=int, default=100,
-                   help='number of epochs for train')
-    p.add_argument('-batch_size', type=int, default=32,
-                   help='number of epochs for train')
-    p.add_argument('-lr', type=float, default=0.0001,
-                   help='initial learning rate')
-    p.add_argument('-grad_clip', type=float, default=10.0,
-                   help='in case of gradient explosion')
+    p.add_argument('-epochs', type=int, default=100)
+    p.add_argument('-batch_size', type=int, default=32)
+    p.add_argument('-lr', type=float, default=1e-4)
+    p.add_argument('-grad_clip', type=float, default=10.0)
+    p.add_argument('-hidden_size', type=int, default=512)
+    p.add_argument('-embed_size', type=int, default=256)
     return p.parse_args()
 
 
-def evaluate(model, val_iter, vocab_size, DE, EN):
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device('cuda')
+    if torch.backends.mps.is_available():
+        return torch.device('mps')
+    return torch.device('cpu')
+
+
+def step_loss(model, src, trg, vocab_size, teacher_forcing_ratio):
+    output = model(src, trg, teacher_forcing_ratio=teacher_forcing_ratio)
+    return F.nll_loss(output[1:].reshape(-1, vocab_size),
+                      trg[1:].reshape(-1), ignore_index=PAD)
+
+
+def evaluate(model, val_iter, vocab_size, device):
+    model.eval()
+    total_loss = 0
     with torch.no_grad():
-        model.eval()
-        pad = EN.vocab.stoi['<pad>']
-        total_loss = 0
-        for b, batch in enumerate(val_iter):
-            src, len_src = batch.src
-            trg, len_trg = batch.trg
-            src = src.data.cuda()
-            trg = trg.data.cuda()
-            output = model(src, trg, teacher_forcing_ratio=0.0)
-            loss = F.nll_loss(output[1:].view(-1, vocab_size),
-                                   trg[1:].contiguous().view(-1),
-                                   ignore_index=pad)
-            total_loss += loss.data.item()
-        return total_loss / len(val_iter)
+        for src, trg in val_iter:
+            src, trg = src.to(device), trg.to(device)
+            total_loss += step_loss(model, src, trg, vocab_size, 0.0).item()
+    return total_loss / len(val_iter)
 
 
-def train(e, model, optimizer, train_iter, vocab_size, grad_clip, DE, EN):
+def train(model, optimizer, train_iter, vocab_size, grad_clip, device):
     model.train()
     total_loss = 0
-    pad = EN.vocab.stoi['<pad>']
-    for b, batch in enumerate(train_iter):
-        src, len_src = batch.src
-        trg, len_trg = batch.trg
-        src, trg = src.cuda(), trg.cuda()
+    for b, (src, trg) in enumerate(train_iter):
+        src, trg = src.to(device), trg.to(device)
         optimizer.zero_grad()
-        output = model(src, trg)
-        loss = F.nll_loss(output[1:].view(-1, vocab_size),
-                               trg[1:].contiguous().view(-1),
-                               ignore_index=pad)
+        loss = step_loss(model, src, trg, vocab_size, 0.5)
         loss.backward()
         clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
-        total_loss += loss.data.item()
-
+        total_loss += loss.item()
         if b % 100 == 0 and b != 0:
-            total_loss = total_loss / 100
             print("[%d][loss:%5.2f][pp:%5.2f]" %
-                  (b, total_loss, math.exp(total_loss)))
+                  (b, total_loss / 100, math.exp(total_loss / 100)))
             total_loss = 0
 
 
 def main():
     args = parse_arguments()
-    hidden_size = 512
-    embed_size = 256
-    assert torch.cuda.is_available()
+    device = get_device()
+    print(f"[!] device: {device}")
 
     print("[!] preparing dataset...")
     train_iter, val_iter, test_iter, DE, EN = load_dataset(args.batch_size)
-    de_size, en_size = len(DE.vocab), len(EN.vocab)
-    print("[TRAIN]:%d (dataset:%d)\t[TEST]:%d (dataset:%d)"
-          % (len(train_iter), len(train_iter.dataset),
-             len(test_iter), len(test_iter.dataset)))
-    print("[DE_vocab]:%d [en_vocab]:%d" % (de_size, en_size))
+    de_size, en_size = len(DE), len(EN)
+    print(f"[TRAIN]:{len(train_iter)}\t[TEST]:{len(test_iter)}")
+    print(f"[DE_vocab]:{de_size} [EN_vocab]:{en_size}")
 
     print("[!] Instantiating models...")
-    encoder = Encoder(de_size, embed_size, hidden_size,
+    encoder = Encoder(de_size, args.embed_size, args.hidden_size,
                       n_layers=2, dropout=0.5)
-    decoder = Decoder(embed_size, hidden_size, en_size,
+    decoder = Decoder(args.embed_size, args.hidden_size, en_size,
                       n_layers=1, dropout=0.5)
-    seq2seq = Seq2Seq(encoder, decoder).cuda()
+    seq2seq = Seq2Seq(encoder, decoder).to(device)
     optimizer = optim.Adam(seq2seq.parameters(), lr=args.lr)
     print(seq2seq)
 
     best_val_loss = None
-    for e in range(1, args.epochs+1):
-        train(e, seq2seq, optimizer, train_iter,
-              en_size, args.grad_clip, DE, EN)
-        val_loss = evaluate(seq2seq, val_iter, en_size, DE, EN)
-        print("[Epoch:%d] val_loss:%5.3f | val_pp:%5.2fS"
+    for e in range(1, args.epochs + 1):
+        train(seq2seq, optimizer, train_iter, en_size, args.grad_clip, device)
+        val_loss = evaluate(seq2seq, val_iter, en_size, device)
+        print("[Epoch:%d] val_loss:%5.3f | val_pp:%5.2f"
               % (e, val_loss, math.exp(val_loss)))
-
-        # Save the model if the validation loss is the best we've seen so far.
-        if not best_val_loss or val_loss < best_val_loss:
+        if best_val_loss is None or val_loss < best_val_loss:
             print("[!] saving model...")
-            if not os.path.isdir(".save"):
-                os.makedirs(".save")
-            torch.save(seq2seq.state_dict(), './.save/seq2seq_%d.pt' % (e))
+            os.makedirs(".save", exist_ok=True)
+            torch.save(seq2seq.state_dict(), f'./.save/seq2seq_{e}.pt')
             best_val_loss = val_loss
-    test_loss = evaluate(seq2seq, test_iter, en_size, DE, EN)
+    test_loss = evaluate(seq2seq, test_iter, en_size, device)
     print("[TEST] loss:%5.2f" % test_loss)
 
 

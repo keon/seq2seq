@@ -19,18 +19,15 @@ This implementation relies on [torchtext](https://github.com/pytorch/text) to mi
 
 ## Requirements
 
-* GPU & CUDA
-* Python3
-* PyTorch
-* torchtext
-* Spacy
-* numpy
-* Visdom (optional)
+* Python 3.9+
+* PyTorch >= 2.0 (CPU, CUDA, or Apple MPS)
+* `datasets` (HuggingFace, replaces torchtext)
+* Spacy >= 3.7
 
-download tokenizers by doing so:
 ```
-python -m spacy download de
-python -m spacy download en
+pip install -r requirements.txt
+python -m spacy download de_core_news_sm
+python -m spacy download en_core_web_sm
 ```
 
 
