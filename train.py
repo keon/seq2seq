@@ -17,6 +17,8 @@ def parse_arguments():
     p.add_argument('-grad_clip', type=float, default=10.0)
     p.add_argument('-hidden_size', type=int, default=512)
     p.add_argument('-embed_size', type=int, default=256)
+    p.add_argument('-patience', type=int, default=5,
+                   help='early-stop after N epochs without val-loss improvement')
     return p.parse_args()
 
 
@@ -79,19 +81,26 @@ def main():
                       n_layers=1, dropout=0.5)
     seq2seq = Seq2Seq(encoder, decoder).to(device)
     optimizer = optim.Adam(seq2seq.parameters(), lr=args.lr)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=2)
     print(seq2seq)
 
-    best_val_loss = None
+    best_val_loss, no_improve = None, 0
     for e in range(1, args.epochs + 1):
         train(seq2seq, optimizer, train_iter, en_size, args.grad_clip, device)
         val_loss = evaluate(seq2seq, val_iter, en_size, device)
+        scheduler.step(val_loss)
         print("[Epoch:%d] val_loss:%5.3f | val_pp:%5.2f"
               % (e, val_loss, math.exp(val_loss)))
         if best_val_loss is None or val_loss < best_val_loss:
             print("[!] saving model...")
             os.makedirs(".save", exist_ok=True)
             torch.save(seq2seq.state_dict(), f'./.save/seq2seq_{e}.pt')
-            best_val_loss = val_loss
+            best_val_loss, no_improve = val_loss, 0
+        else:
+            no_improve += 1
+            if no_improve >= args.patience:
+                print(f"[!] early stop after {e} epochs (no val improvement for {args.patience})")
+                break
     test_loss = evaluate(seq2seq, test_iter, en_size, device)
     print("[TEST] loss:%5.2f" % test_loss)
 
