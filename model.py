@@ -27,9 +27,8 @@ class Attention(nn.Module):
     def __init__(self, hidden_size):
         super().__init__()
         self.attn = nn.Linear(hidden_size * 2, hidden_size)
-        self.v = nn.Parameter(torch.rand(hidden_size))
-        stdv = 1. / math.sqrt(self.v.size(0))
-        self.v.data.uniform_(-stdv, stdv)
+        stdv = 1. / math.sqrt(hidden_size)
+        self.v = nn.Parameter(torch.empty(hidden_size).uniform_(-stdv, stdv))
 
     def forward(self, hidden, encoder_outputs):
         timestep = encoder_outputs.size(0)
@@ -54,11 +53,17 @@ class Decoder(nn.Module):
         self.n_layers = n_layers
         self.output_size = output_size
         self.embed = nn.Embedding(output_size, embed_size)
-        self.dropout = nn.Dropout(dropout, inplace=True)
+        self.dropout = nn.Dropout(dropout)
         self.attention = Attention(hidden_size)
         self.gru = nn.GRU(hidden_size + embed_size, hidden_size,
                           n_layers, dropout=dropout)
         self.out = nn.Linear(hidden_size * 2, output_size)
+        # Bahdanau §A.2.2: s_0 = tanh(W_s · ←h_1) from encoder's last backward state.
+        self.bridge = nn.Linear(hidden_size, hidden_size)
+
+    def init_hidden(self, encoder_hidden):
+        return torch.tanh(self.bridge(encoder_hidden[-1])).unsqueeze(0).repeat(
+            self.n_layers, 1, 1)
 
     def forward(self, input, last_hidden, encoder_outputs):
         embedded = self.dropout(self.embed(input).unsqueeze(0))  # (1,B,N)
@@ -89,10 +94,13 @@ class Seq2Seq(nn.Module):
         outputs = torch.zeros(max_len, batch_size, vocab_size,
                               device=src.device)
 
-        encoder_output, hidden = self.encoder(src)
-        hidden = hidden[:self.decoder.n_layers]
+        encoder_output, encoder_hidden = self.encoder(src)
+        hidden = self.decoder.init_hidden(encoder_hidden)
         output = trg[0] if trg is not None else torch.full(
             (batch_size,), sos, dtype=torch.long, device=src.device)
+        # Position 0 isn't predicted by the decoder; mark it as the start token
+        # so `outputs.argmax(-1)` reads back a complete token sequence.
+        outputs[0].scatter_(1, output.unsqueeze(1), 1.0)
         for t in range(1, max_len):
             output, hidden, _ = self.decoder(output, hidden, encoder_output)
             outputs[t] = output

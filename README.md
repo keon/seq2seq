@@ -42,13 +42,13 @@ Sanity check (CPU, 500 batches, hidden=128/embed=64):
 
 | step | train loss | perplexity |
 |------|-----------:|-----------:|
-| init |       9.20 |      9930 |
-|   50 |       6.95 |      1045 |
-|  100 |       5.46 |       236 |
-|  250 |       5.16 |       175 |
-|  500 |       4.89 |       133 |
+| init |       9.19 |      9803 |
+|   50 |       6.98 |      1071 |
+|  100 |       5.48 |       239 |
+|  250 |       5.15 |       173 |
+|  500 |       4.84 |       127 |
 
-Final val loss: **4.97** (random-init prior is `log(|V|) ≈ 9.19`).
+Final val loss: **4.93** (random-init prior is `log(|V|) ≈ 9.19`).
 
 ## References
 

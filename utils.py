@@ -31,18 +31,21 @@ def load_dataset(batch_size, dataset_name='bentrevett/multi30k'):
     tok_en = lambda t: [w.text.lower() for w in en_nlp.tokenizer(t)]
 
     raw = _hf_load_dataset(dataset_name)
-    train, val, test = raw['train'], raw['validation'], raw['test']
+    # Pre-tokenize once (cached to disk by HF datasets) so epochs don't re-spaCy.
+    tokenize = lambda ex: {'de': tok_de(ex['de']), 'en': tok_en(ex['en'])}
+    train, val, test = (raw[k].map(tokenize)
+                        for k in ('train', 'validation', 'test'))
 
     de_c, en_c = Counter(), Counter()
     for ex in train:
-        de_c.update(tok_de(ex['de']))
-        en_c.update(tok_en(ex['en']))
+        de_c.update(ex['de'])
+        en_c.update(ex['en'])
     DE = Vocab(de_c, min_freq=2)
     EN = Vocab(en_c, max_size=10000)
 
     def collate(batch):
-        src = [torch.tensor(DE.encode(tok_de(b['de']))) for b in batch]
-        trg = [torch.tensor(EN.encode(tok_en(b['en']))) for b in batch]
+        src = [torch.tensor(DE.encode(b['de'])) for b in batch]
+        trg = [torch.tensor(EN.encode(b['en'])) for b in batch]
         return (pad_sequence(src, padding_value=PAD),
                 pad_sequence(trg, padding_value=PAD))
 
